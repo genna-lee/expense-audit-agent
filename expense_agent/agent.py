@@ -165,9 +165,16 @@ def parse_and_route(ctx: Context, node_input: Any) -> Event:
     
     expense = ExpenseReport(**expense_dict)
 
+    # 產生唯一案件編號（僅新進件才生成，Resume 時沿用 state 內的）
+    case_id = ctx.state.get("case_id") or _generate_case_id()
+
     # 不論金額多小，一律送進資安檢查哨過濾惡意指令與個資！
-    print(f"[*] Expense amount: ${expense.amount}. Routing to security_checkpoint.")
-    return Event(output=expense, route="security_checkpoint", state={"expense": expense.model_dump()})
+    print(f"[*] [{case_id}] Expense amount: ${expense.amount}. Routing to security_checkpoint.")
+    return Event(
+        output=expense,
+        route="security_checkpoint",
+        state={"expense": expense.model_dump(), "case_id": case_id},
+    )
 
 @node
 def auto_approve(ctx: Context, node_input: ExpenseReport) -> Event:
@@ -249,6 +256,9 @@ _DATA_DIR = Path(__file__).parent / "data"
 _LEDGER_PATH = Path(
     os.environ.get("LEDGER_PATH", str(_DATA_DIR / "purchase_ledger.jsonl"))
 )
+_AUDIT_LOG_PATH = Path(
+    os.environ.get("AUDIT_LOG_PATH", str(_DATA_DIR / "audit_log.jsonl"))
+)
 
 
 def _load_policy() -> dict:
@@ -277,10 +287,11 @@ def _find_vendor(
     return None
 
 
-def _append_ledger(expense: ExpenseReport) -> None:
+def _append_ledger(expense: ExpenseReport, ctx: Context) -> None:
     """把本筆採購寫入跨筆拆單追蹤 ledger。"""
     _LEDGER_PATH.parent.mkdir(parents=True, exist_ok=True)
     entry = {
+        "case_id": ctx.state.get("case_id"),
         "submitter": expense.submitter,
         "amount": expense.amount,
         "category": expense.category,
@@ -289,6 +300,60 @@ def _append_ledger(expense: ExpenseReport) -> None:
     }
     with open(_LEDGER_PATH, "a", encoding="utf-8") as f:
         f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+
+
+def _generate_case_id() -> str:
+    """產生唯一案件編號 EXP-YYYYMM-NNNN，counter 依當月 audit_log 行數決定。"""
+    ym = datetime.now(timezone.utc).strftime("%Y%m")
+    counter = 1
+    if _AUDIT_LOG_PATH.exists():
+        with open(_AUDIT_LOG_PATH, encoding="utf-8") as f:
+            for line in f:
+                if line.strip():
+                    try:
+                        entry = json.loads(line)
+                        cid = entry.get("case_id", "")
+                        if cid.startswith(f"EXP-{ym}-"):
+                            counter += 1
+                    except Exception:
+                        pass
+    return f"EXP-{ym}-{counter:04d}"
+
+
+def _append_audit_log(expense: ExpenseReport, ctx: Context) -> None:
+    """把每筆最終結果寫入稽核日誌（audit_log.jsonl）。"""
+    _AUDIT_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    fraud_flags: list = ctx.state.get("fraud_flags", [])
+    case_id: str = ctx.state.get("case_id", "UNKNOWN")
+
+    # 推斷 risk_level
+    if expense.status == "APPROVED" and not fraud_flags:
+        risk_level = "NONE"
+    elif any("CRITICAL" in str(f) or "注入" in str(f) or "Injection" in str(f) for f in fraud_flags):
+        risk_level = "CRITICAL"
+    elif fraud_flags:
+        risk_level = "HIGH"
+    else:
+        risk_level = "LOW"
+
+    entry = {
+        "case_id": case_id,
+        "submitter": expense.submitter,
+        "amount": expense.amount,
+        "category": expense.category,
+        "date": expense.date,
+        "description": expense.description,   # 已遮蔽版（security_checkpoint 後）
+        "vendor_name": expense.vendor_name,
+        "vendor_tax_id": expense.vendor_tax_id,
+        "fraud_flags": fraud_flags,
+        "related_case_ids": ctx.state.get("related_case_ids", []),
+        "risk_level": risk_level,
+        "status": expense.status,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+    with open(_AUDIT_LOG_PATH, "a", encoding="utf-8") as f:
+        f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    print(f"[v] [AUDIT] {case_id} → {expense.status} (risk={risk_level}) appended to audit_log")
 
 
 def _get_recent_purchases(submitter: str, window_days: int) -> list[dict]:
@@ -399,6 +464,10 @@ def fraud_detector(ctx: Context, node_input: ExpenseReport) -> Event:
         projected_total = past_total + node_input.amount
 
         if len(qualifying_past) >= 1 and projected_total >= split_threshold:
+            related_case_ids = [r.get("case_id") for r in qualifying_past if r.get("case_id")]
+            related_case_ids.append(ctx.state.get("case_id"))
+            ctx.state["related_case_ids"] = related_case_ids
+            
             flags.append(
                 f"疑似拆單規避招標: {node_input.submitter} 近 {window_days} 天共 "
                 f"{len(qualifying_past) + 1} 筆採購（含本筆），"
@@ -408,7 +477,7 @@ def fraud_detector(ctx: Context, node_input: ExpenseReport) -> Event:
 
     # 無論有無紅旗，都把本筆寫入 ledger（供後續拆單偵測用）
     try:
-        _append_ledger(node_input)
+        _append_ledger(node_input, ctx)
     except Exception as e:
         print(f"[!] [FRAUD] ledger 寫入失敗: {e}")
 
@@ -422,7 +491,7 @@ def fraud_detector(ctx: Context, node_input: ExpenseReport) -> Event:
         return Event(
             output=risk,
             route="human_approval",
-            state={"expense": node_input.model_dump(), "fraud_flags": flags},
+            state={"expense": node_input.model_dump(), "fraud_flags": flags, "related_case_ids": ctx.state.get("related_case_ids", [])},
         )
 
     # 全部通過，依金額分流
@@ -498,7 +567,12 @@ def record_outcome(ctx: Context, node_input: ExpenseReport) -> ExpenseReport:
     節點 6：紀錄最終結果 (收斂節點 Fan-in)。
     Node 6: Final node. Records and prints the final outcome.
     """
-    print(f"\n[v] [OUTCOME RECORDED] Expense for {node_input.submitter} (${node_input.amount}) is now: {node_input.status}\n")
+    case_id = ctx.state.get("case_id", "UNKNOWN")
+    print(f"\n[v] [OUTCOME RECORDED] [{case_id}] Expense for {node_input.submitter} (${node_input.amount}) is now: {node_input.status}\n")
+    try:
+        _append_audit_log(node_input, ctx)
+    except Exception as e:
+        print(f"[!] [AUDIT] audit_log 寫入失敗: {e}")
     return node_input
 
 # ---------------------------------------------------------

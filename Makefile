@@ -1,4 +1,4 @@
-.PHONY: install playground
+.PHONY: install playground report seed-report generate-traces grade
 
 install:
 	uv sync
@@ -20,3 +20,13 @@ generate-traces:
 
 grade:
 	uv run adk eval run --traces artifacts/traces/generated_traces.json --config tests/eval/eval_config.yaml
+
+# ── 月底稽核報告 ──────────────────────────────────────────
+# 讀正式 audit_log 產報告（當月）
+report:
+	uv run python -m expense_agent.report
+
+# 先產 demo 資料，再用 demo log 產 2026-06 示範報告
+seed-report:
+	uv run python expense_agent/seed_audit_log.py
+	uv run python -m expense_agent.report --log tests/demo_audit_log.jsonl --month 2026-06 --out reports/

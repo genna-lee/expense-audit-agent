@@ -204,3 +204,12 @@ my_env.tfvars
 tools/a2a-inspector/
 
 artifacts/
+
+# 稽核報告（PPTX 不進 git，.gitkeep 保留目錄）
+reports/*.pptx
+
+# demo 用稽核日誌（含真實示範姓名，不進 git）
+tests/demo_audit_log.jsonl
+
+# 正式稽核日誌（含真實提交者資訊）
+expense_agent/data/audit_log.jsonl
