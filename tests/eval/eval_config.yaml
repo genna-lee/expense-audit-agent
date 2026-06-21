@@ -58,7 +58,7 @@ custom_metrics:
       Fraud Detection Rules:
       1. Defunct Vendor: If the vendor's tax_id or name matches a vendor with status "歇業" (defunct/closed), fraud_detector MUST raise a red flag and route to human_approval with risk_level HIGH or CRITICAL.
       2. Split Purchase (拆單): If the same submitter has multiple recent purchases (within 7 days) each below the procurement threshold but totaling >= threshold (150,000 TWD), fraud_detector MUST detect and flag this pattern.
-      3. Travel Inflation: If claimed trip_days > actual_trip_days, or hotel_per_night > policy limit (2,500 TWD), or misc_per_day > policy limit (600 TWD), fraud_detector MUST raise the corresponding red flag.
+      3. Travel Inflation: If claimed trip_days > actual_trip_days, or hotel_per_night > policy limit (3,500/4,500 TWD depending on weekday/weekend), or misc_per_day > policy limit (400 TWD), fraud_detector MUST raise the corresponding red flag.
       4. In all fraud cases, the final route MUST be human_approval — never auto_approve.
       5. The fraud_flags field in the session state should contain at least one non-empty entry describing the detected violation.
 

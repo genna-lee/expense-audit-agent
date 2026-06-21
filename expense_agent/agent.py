@@ -425,7 +425,7 @@ def fraud_detector(ctx: Context, node_input: ExpenseReport) -> Event:
         if max_limit is not None and node_input.amount > max_limit:
             flags.append(
                 f"業務費超上限: 類別「{node_input.category}」"
-                f"上限 {max_limit:,} 元，申報 {node_input.amount:,.0f} 元"
+                f"上限 NT$ {max_limit:,}，申報 NT$ {node_input.amount:,.0f}"
             )
 
     # --- 3. 出差浮報 ---
@@ -437,18 +437,25 @@ def fraud_detector(ctx: Context, node_input: ExpenseReport) -> Event:
                 f"實際行程 {node_input.actual_trip_days} 天"
             )
     if node_input.hotel_per_night is not None:
-        hotel_limit = travel.get("hotel_per_night_limit", 2500)
+        try:
+            dt = datetime.strptime(node_input.date, "%Y-%m-%d")
+            is_weekend = dt.weekday() in (4, 5)
+        except Exception:
+            is_weekend = False
+            
+        hotel_limit = travel.get("hotel_per_night_limit_weekend", 4500) if is_weekend else travel.get("hotel_per_night_limit_weekday", 3500)
+        
         if node_input.hotel_per_night > hotel_limit:
             flags.append(
-                f"住宿費超上限: 每晚 {node_input.hotel_per_night:,.0f} 元，"
-                f"上限 {hotel_limit:,} 元"
+                f"住宿費超上限: 每晚 NT$ {node_input.hotel_per_night:,.0f}，"
+                f"上限 NT$ {hotel_limit:,}"
             )
     if node_input.misc_per_day is not None:
-        misc_limit = travel.get("misc_per_day_limit", 600)
+        misc_limit = travel.get("misc_per_day_limit", 400)
         if node_input.misc_per_day > misc_limit:
             flags.append(
-                f"雜費超上限: 每日 {node_input.misc_per_day:,.0f} 元，"
-                f"上限 {misc_limit:,} 元"
+                f"雜費超上限: 每日 NT$ {node_input.misc_per_day:,.0f}，"
+                f"上限 NT$ {misc_limit:,}"
             )
 
     # --- 4. 拆單規避招標 ---
@@ -471,8 +478,8 @@ def fraud_detector(ctx: Context, node_input: ExpenseReport) -> Event:
             flags.append(
                 f"疑似拆單規避招標: {node_input.submitter} 近 {window_days} 天共 "
                 f"{len(qualifying_past) + 1} 筆採購（含本筆），"
-                f"各筆未達門檻（{split_threshold:,} 元），"
-                f"加總 {projected_total:,.0f} 元 >= {split_threshold:,} 元"
+                f"各筆未達門檻（NT$ {split_threshold:,}），"
+                f"加總 NT$ {projected_total:,.0f} >= NT$ {split_threshold:,}"
             )
 
     # 無論有無紅旗，都把本筆寫入 ledger（供後續拆單偵測用）

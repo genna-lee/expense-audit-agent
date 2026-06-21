@@ -282,10 +282,10 @@ def slide_overview(prs: Presentation, stats: dict, month: str) -> None:
         rect.line.color.rgb = C_BORDER; rect.line.width = Pt(0.5)
         _add_textbox(slide, left + Inches(0.1), top + Inches(0.15),
                      card_w - Inches(0.2), Inches(0.45),
-                     label, font_size=13, color=RGBColor(0x7F, 0x8C, 0x8D))
+                     label, font_size=16, color=RGBColor(0x7F, 0x8C, 0x8D))
         _add_textbox(slide, left + Inches(0.1), top + Inches(0.6),
                      card_w - Inches(0.2), Inches(1.0),
-                     value, font_size=32, bold=True, color=val_color)
+                     value, font_size=36, bold=True, color=val_color)
 
 
 def slide_flag_stats(prs: Presentation, stats: dict, month: str) -> None:
@@ -309,7 +309,7 @@ def slide_flag_stats(prs: Presentation, stats: dict, month: str) -> None:
         # 標籤
         _add_textbox(slide, Inches(0.5), top + Inches(0.15),
                      Inches(3.2), Inches(0.55),
-                     label, font_size=14, color=C_DARK, bold=(count > 0))
+                     label, font_size=16, color=C_DARK, bold=(count > 0))
         # 橫條
         if count > 0:
             bar_w = bar_max_w * (count / max_val)
@@ -320,11 +320,11 @@ def slide_flag_stats(prs: Presentation, stats: dict, month: str) -> None:
             bar.line.fill.background()
             _add_textbox(slide, Inches(3.8) + max(bar_w, Inches(0.3)) + Inches(0.1),
                          top + Inches(0.15), Inches(1.2), Inches(0.5),
-                         str(count), font_size=16, bold=True, color=bar_color)
+                         str(count), font_size=20, bold=True, color=bar_color)
         else:
             _add_textbox(slide, Inches(3.8), top + Inches(0.15),
                          Inches(2), Inches(0.5),
-                         "0", font_size=14, color=RGBColor(0xBD, 0xC3, 0xC7))
+                         "0", font_size=16, color=RGBColor(0xBD, 0xC3, 0xC7))
 
 
 def slide_top_cases(prs: Presentation, cases: list[dict], month: str) -> None:
@@ -349,7 +349,7 @@ def slide_top_cases(prs: Presentation, cases: list[dict], month: str) -> None:
         ("關聯案件",  1.6,  lambda e: ",\n".join(e.get("related_case_ids", [])) if e.get("related_case_ids") else ""),
         ("遮蔽姓名",  1.0,  lambda e: mask_name(e.get("submitter", ""))),
         ("類別",      1.2,  lambda e: e.get("category", "")),
-        ("金額(NT$)", 1.2,  lambda e: f"{e.get('amount', 0):,.0f}"),
+        ("金額",      1.2,  lambda e: f"NT$ {e.get('amount', 0):,.0f}"),
         ("日期",      1.1,  lambda e: e.get("date", "")),
         ("紅旗摘要",  4.2,  lambda e: "；".join(e.get("fraud_flags", []))[:60] + ("…" if sum(len(f) for f in e.get("fraud_flags",[])) > 60 else "")),
         ("狀態",      1.0,  lambda e: e.get("status", "")),
@@ -370,7 +370,7 @@ def slide_top_cases(prs: Presentation, cases: list[dict], month: str) -> None:
     # 表頭
     for ci, (header, _, _) in enumerate(COL_DEFS):
         _style_cell(tbl.cell(0, ci), header,
-                    font_size=11, bold=True, bg=C_NAVY, color=C_WHITE, align=PP_ALIGN.CENTER)
+                    font_size=14, bold=True, bg=C_NAVY, color=C_WHITE, align=PP_ALIGN.CENTER)
 
     # 資料列
     for ri, entry in enumerate(cases, start=1):
@@ -381,7 +381,7 @@ def slide_top_cases(prs: Presentation, cases: list[dict], month: str) -> None:
             val = getter(entry)
             cell_color = C_RED if (ci == n_cols - 1 and status == "REJECTED") else C_DARK
             _style_cell(tbl.cell(ri, ci), val,
-                        font_size=10, bg=row_bg if ci == 0 else (row_bg if is_critical else C_WHITE),
+                        font_size=12, bg=row_bg if ci == 0 else (row_bg if is_critical else C_WHITE),
                         color=cell_color)
 
 
@@ -411,7 +411,7 @@ def slide_risk_summary(prs: Presentation, stats: dict, month: str, gemini_text: 
         run.text = line
         # 建議條目（以數字或 • 開頭）加粗、紅色
         is_rec = line[:2] in ("1.", "2.", "3.", "4.", "5.") or line.startswith("•") or line.startswith("建議")
-        run.font.size  = Pt(13 if is_rec else 14)
+        run.font.size  = Pt(16 if is_rec else 18)
         run.font.bold  = is_rec
         run.font.color.rgb = C_RED if is_rec else C_DARK
         p.space_after  = Pt(6)

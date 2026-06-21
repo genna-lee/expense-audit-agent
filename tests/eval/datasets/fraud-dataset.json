@@ -36,14 +36,14 @@
   {
     "scenario": "Case-D: Travel Expense Inflation",
     "eval_tags": ["routing", "fraud"],
-    "amount": 25000,
+    "amount": 26000,
     "submitter": "陳美美",
     "category": "出差旅費",
     "description": "前往台北參加學術研討會五天",
-    "date": "2026-06-21",
+    "date": "2026-06-20",
     "trip_days": 5,
     "actual_trip_days": 3,
-    "hotel_per_night": 3500.0,
+    "hotel_per_night": 5000.0,
     "misc_per_day": 800.0,
     "_expected": "fraud_detector triggers trip-days inflation + hotel overlimit + misc overlimit, route=human_approval"
   },
