@@ -88,7 +88,7 @@ expense-audit-agent/
 │   └── integration/            # End-to-end server tests
 │
 ├── reports/
-│   └── .gitkeep                    # PPTX outputs excluded from repo (.gitignore)
+│   └── .gitkeep                    # PPTX outputs generated on demand, not stored in repo
 │
 ├── agents-cli-manifest.yaml    # ADK agent manifest
 ├── GEMINI.md                   # AI development context
