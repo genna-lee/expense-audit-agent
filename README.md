@@ -64,6 +64,7 @@ Expense Claim (JSON)
 
 ```
 expense-audit-agent/
+├── demo_runner.py              # One-command demo: runs all 6 cases automatically
 ├── expense_agent/              # Main audit engine (ADK Workflow)
 │   ├── agent.py                # Workflow nodes: parse → security → fraud → HITL → record
 │   ├── config.py               # Model & environment config
@@ -164,7 +165,6 @@ TOTAL                 18/18              0.00
 - Python 3.11+
 - [uv](https://docs.astral.sh/uv/getting-started/installation/) — Python package manager
 - [Google AI Studio API key](https://aistudio.google.com/apikey)
-- Node.js 18+ (optional, for regenerating the capstone deck)
 
 ### Setup
 
@@ -211,7 +211,7 @@ Open `expense_agent` in the ADK Playground, paste any of the following into the 
 
 **Case A — Normal claim (Auto-Approved):**
 ```json
-{"amount": 85, "submitter": "王小明", "category": "Stationery", "description": "Purchased office pens and sticky notes", "date": "2026-06-23"}
+{"amount": 50, "submitter": "王小明", "category": "Stationery", "description": "Purchased office pens and sticky notes", "date": "2026-06-23"}
 ```
 
 **Case B — Defunct vendor (REJECTED):**
