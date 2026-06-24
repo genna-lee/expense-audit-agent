@@ -211,5 +211,33 @@ reports/*.pptx
 # demo 用稽核日誌（含真實示範姓名，不進 git）
 tests/demo_audit_log.jsonl
 
+# eval 執行期間產生的暫存日誌
+tests/eval_audit_log.jsonl
+
+# 根目錄暫存測試腳本（開發期間用，不進 repo）
+test_agent.py
+scratch_check_res.py
+test_extract.py
+test_order.py
+test_pubsub.py
+payload.json
+
+# reports 目錄：寫作稿、產生器腳本、PDF 預覽均不進 repo
+reports/kaggle_writeup.md
+reports/kaggle_writeup.docx
+reports/kaggle_writeup.html
+reports/kaggle_writeup_plain.txt
+reports/gen_capstone.js
+reports/gen_capstone_v2.js
+reports/gen_writeup_docx.js
+reports/*.pdf
+reports/slides/
+reports/v2/
+reports/v3/
+
+# tests 執行期間產生的 log 檔
+tests/latest_run.txt
+tests/test_run_output.txt
+
 # 正式稽核日誌（含真實提交者資訊）
 expense_agent/data/audit_log.jsonl

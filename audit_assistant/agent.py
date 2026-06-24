@@ -33,8 +33,8 @@ async def generate_audit_report(month: str, tool_context: ToolContext) -> dict:
             
         # 存成 ADK Artifact
         await tool_context.save_artifact(
-            filename=out_path.name,
-            artifact=genai_types.Part.from_bytes(
+            out_path.name,
+            genai_types.Part.from_bytes(
                 data=content,
                 mime_type="application/vnd.openxmlformats-officedocument.presentationml.presentation"
             )

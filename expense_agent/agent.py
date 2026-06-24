@@ -31,6 +31,7 @@ class ExpenseReport(BaseModel):
     date: str
     status: str = "PENDING"
     # --- 防弊擴充欄位（全部 Optional，缺值時對應檢查自動跳過）---
+    invoice_no: Optional[str] = None         # 發票號碼（用於重複報支偵測）
     vendor_name: Optional[str] = None        # 廠商名稱
     vendor_tax_id: Optional[str] = None     # 統一編號（比對歇業廠商，優先於名稱）
     trip_days: Optional[int] = None          # 申報出差天數
@@ -151,6 +152,7 @@ def parse_and_route(ctx: Context, node_input: Any) -> Event:
             "date": raw_dict.get("date", "Unknown"),
             "status": "PENDING",
             # --- 防弊欄位，缺值維持 None ---
+            "invoice_no": raw_dict.get("invoice_no"),
             "vendor_name": raw_dict.get("vendor_name"),
             "vendor_tax_id": raw_dict.get("vendor_tax_id"),
             "trip_days": raw_dict.get("trip_days"),
@@ -343,6 +345,7 @@ def _append_audit_log(expense: ExpenseReport, ctx: Context) -> None:
         "category": expense.category,
         "date": expense.date,
         "description": expense.description,   # 已遮蔽版（security_checkpoint 後）
+        "invoice_no": expense.invoice_no,
         "vendor_name": expense.vendor_name,
         "vendor_tax_id": expense.vendor_tax_id,
         "fraud_flags": fraud_flags,
@@ -383,6 +386,27 @@ def _get_recent_purchases(submitter: str, window_days: int) -> list[dict]:
     return results
 
 
+def _check_invoice_duplicate(invoice_no: str) -> Optional[dict]:
+    """
+    比對 audit_log.jsonl，回傳第一筆相同 invoice_no 的紀錄，找不到則回傳 None。
+    隱私保護：呼叫方只取 date / case_id，不對外揭露原始申報人姓名。
+    """
+    if not invoice_no or not _AUDIT_LOG_PATH.exists():
+        return None
+    with open(_AUDIT_LOG_PATH, encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                entry = json.loads(line)
+                if entry.get("invoice_no") == invoice_no:
+                    return entry
+            except Exception:
+                continue
+    return None
+
+
 # ---------------------------------------------------------
 # 節點 4：防弊稽核（純 Python）
 # ---------------------------------------------------------
@@ -403,6 +427,19 @@ def fraud_detector(ctx: Context, node_input: ExpenseReport) -> Event:
     except Exception as e:
         print(f"[!] [FRAUD] policy.json 載入失敗: {e}，跳過政策檢查")
         policy = {}
+
+    # --- 0. 重複發票偵測（Preventative Control）---
+    if node_input.invoice_no:
+        existing = _check_invoice_duplicate(node_input.invoice_no)
+        if existing:
+            flags.append(
+                f"Duplicate Invoice: invoice_no '{node_input.invoice_no}' was already submitted "
+                f"on {existing.get('date', 'unknown date')} "
+                f"(Case ID: {existing.get('case_id', 'N/A')}). "
+                f"The original submitter of this invoice is not disclosed to protect third-party privacy (ISO 27001 A.8.11). "
+                f"If you submit despite this warning, the act is logged as intentional."
+            )
+            print(f"[!] [FRAUD] Duplicate invoice detected: {node_input.invoice_no}")
 
     # --- 1. 歇業廠商 ---
     if node_input.vendor_tax_id or node_input.vendor_name:

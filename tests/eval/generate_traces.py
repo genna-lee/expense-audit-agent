@@ -25,7 +25,8 @@ from pathlib import Path
 # ── 路徑常數 ──────────────────────────────────────────────
 ROOT = Path(__file__).parent.parent.parent          # repo root
 DATASET_PATH = ROOT / "tests" / "eval" / "datasets" / "fraud-dataset.json"
-EVAL_LEDGER  = ROOT / "tests" / "eval_ledger.jsonl"  # eval 專用 ledger
+EVAL_LEDGER     = ROOT / "tests" / "eval_ledger.jsonl"    # eval 專用 ledger
+EVAL_AUDIT_LOG  = ROOT / "tests" / "eval_audit_log.jsonl" # eval 專用 audit log（避免污染主資料）
 OUTPUT_DIR   = ROOT / "artifacts" / "traces"
 OUTPUT_PATH  = OUTPUT_DIR / "generated_traces.json"
 
@@ -53,7 +54,7 @@ CASE_C_SEEDS = [
 ]
 
 # ── 哪些案例碰到 HITL 要自動送 "no" ──────────────────────
-HITL_REJECT_KEYWORDS = {"Fraud", "Injection", "Conflict", "Defunct", "Split", "Travel", "Inflation"}
+HITL_REJECT_KEYWORDS = {"Fraud", "Injection", "Conflict", "Defunct", "Split", "Travel", "Inflation", "Duplicate"}
 
 
 def _should_reject(scenario: str) -> bool:
@@ -69,10 +70,40 @@ def seed_case_c():
     print(f"[SEED C] eval ledger 清空並寫入 {len(CASE_C_SEEDS)} 筆種子紀錄 → {EVAL_LEDGER}")
 
 
+def seed_case_f():
+    """寫入一筆已核准的發票紀錄到 eval audit log，供 Case F 重複發票偵測使用。"""
+    EVAL_AUDIT_LOG.parent.mkdir(parents=True, exist_ok=True)
+    entry = {
+        "case_id": "EXP-202606-SEED",
+        "submitter": "林大同",
+        "amount": 3500.0,
+        "category": "辦公設備",
+        "date": "2026-06-01",
+        "description": "Purchase of office supplies",
+        "invoice_no": "INV-2026-0601",
+        "vendor_name": None,
+        "vendor_tax_id": None,
+        "fraud_flags": [],
+        "related_case_ids": [],
+        "risk_level": "NONE",
+        "status": "APPROVED",
+        "timestamp": THREE_DAYS_AGO,
+    }
+    with open(EVAL_AUDIT_LOG, "w", encoding="utf-8") as f:
+        f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    print(f"[SEED F] eval audit_log 寫入發票 INV-2026-0601 種子 → {EVAL_AUDIT_LOG}")
+
+
 def clear_eval_ledger():
     """清空 eval ledger（非 Case C 案例用）。"""
     EVAL_LEDGER.parent.mkdir(parents=True, exist_ok=True)
     EVAL_LEDGER.write_text("", encoding="utf-8")
+
+
+def clear_eval_audit_log():
+    """清空 eval audit log（非 Case F 案例用）。"""
+    EVAL_AUDIT_LOG.parent.mkdir(parents=True, exist_ok=True)
+    EVAL_AUDIT_LOG.write_text("", encoding="utf-8")
 
 
 def spawn_server() -> subprocess.Popen:
@@ -81,7 +112,8 @@ def spawn_server() -> subprocess.Popen:
     回傳 Popen 物件，由呼叫方負責 terminate()。
     """
     env = os.environ.copy()
-    env["LEDGER_PATH"] = str(EVAL_LEDGER)
+    env["LEDGER_PATH"]    = str(EVAL_LEDGER)
+    env["AUDIT_LOG_PATH"] = str(EVAL_AUDIT_LOG)
 
     cmd = [
         sys.executable, "-m", "uvicorn",
@@ -235,6 +267,12 @@ def run_evaluation():
             else:
                 clear_eval_ledger()
 
+            # Case F 前先 seed audit log；其餘清空
+            if "Case-F" in scenario or "Duplicate" in scenario:
+                seed_case_f()
+            else:
+                clear_eval_audit_log()
+
             result = run_scenario(item)
             if result:
                 eval_cases.append(result)
@@ -251,9 +289,10 @@ def run_evaluation():
 
     print(f"\n[v] Generated {len(eval_cases)} traces → {OUTPUT_PATH}")
 
-    # 清理 eval ledger
+    # 清理 eval 暫存檔
     clear_eval_ledger()
-    print("[DONE] eval_ledger.jsonl cleared.")
+    clear_eval_audit_log()
+    print("[DONE] eval_ledger.jsonl + eval_audit_log.jsonl cleared.")
 
 
 if __name__ == "__main__":

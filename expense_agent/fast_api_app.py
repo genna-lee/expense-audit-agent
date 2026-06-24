@@ -20,11 +20,16 @@ import json
 import logging
 from pydantic import BaseModel
 from google.adk.cli.fast_api import get_fast_api_app
+from google.adk.cli.utils.agent_loader import AgentLoader
 from google.adk.runners import InMemoryRunner
 
 from expense_agent.app_utils.telemetry import setup_telemetry
 from expense_agent.app_utils.typing import Feedback
 from expense_agent.agent import root_agent
+
+class FilteredAgentLoader(AgentLoader):
+    def list_agents(self) -> list[str]:
+        return [a for a in super().list_agents() if a not in ("artifacts", "reports", "tests", "frontend")]
 
 setup_telemetry()
 
@@ -45,6 +50,7 @@ artifact_service_uri = f"gs://{logs_bucket_name}" if logs_bucket_name else None
 
 app: FastAPI = get_fast_api_app(
     agents_dir=AGENT_DIR,
+    agent_loader=FilteredAgentLoader(AGENT_DIR),
     web=True,
     artifact_service_uri=artifact_service_uri,
     allow_origins=allow_origins,
