@@ -134,7 +134,7 @@ expense-audit-agent/
 | Component | Technology |
 |---|---|
 | Agent framework | Google ADK 2.x (`WorkflowAgent` + `LlmAgent`) |
-| LLM | `gemini-2.0-flash-lite` (configurable in `config.py`) |
+| LLM | `gemini-3.1-flash-lite` (configurable in `config.py`) |
 | Server | FastAPI + uvicorn |
 | Report generation | `python-pptx` + Gemini-generated summaries |
 | Evaluation | `agents-cli eval` with 3 custom Gemini-graded metrics |
