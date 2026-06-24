@@ -1,7 +1,0 @@
-{
-  "message": {
-    "data": "eyJhbW91bnQiOiAxNTAuMCwgInN1Ym1pdHRlciI6ICJ1c2VyQGNvbXBhbnkuY29tIiwgImNhdGVnb3J5IjogInRyYXZlbCIsICJkZXNjcmlwdGlvbiI6ICJGbGlnaHQgdGlja2V0IiwgImRhdGUiOiAiMjAyNi0wNi0yMSJ9",
-    "messageId": "TEST-ID-001"
-  },
-  "subscription": "projects/my-proj/subscriptions/expense-topic-sub"
-}
