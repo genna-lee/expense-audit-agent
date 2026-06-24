@@ -83,12 +83,11 @@ expense-audit-agent/
 │   ├── eval/
 │   │   ├── generate_traces.py  # Custom eval runner (spawns server, handles HITL)
 │   │   ├── eval_config.yaml    # 3 Gemini-graded metrics
-│   │   └── datasets/           # 5-case fraud test dataset
+│   │   └── datasets/           # 6-case fraud test dataset
 │   └── integration/            # End-to-end server tests
 │
 ├── reports/
-│   ├── SmartAudit_Capstone.pptx    # Kaggle presentation deck
-│   └── audit_report_2026-*.pptx   # Sample monthly reports
+│   └── .gitkeep                    # PPTX outputs excluded from repo (.gitignore)
 │
 ├── agents-cli-manifest.yaml    # ADK agent manifest
 ├── GEMINI.md                   # AI development context
@@ -171,7 +170,7 @@ TOTAL                 18/18              0.00
 
 ```bash
 # 1. Clone the repo
-git clone <repo-url>
+git clone https://github.com/genna-lee/expense-audit-agent.git
 cd expense-audit-agent
 
 # 2. Install dependencies
@@ -190,20 +189,19 @@ uv run python expense_agent/seed_audit_log.py
 ### Run
 
 ```bash
-# Launch ADK Playground (expense_agent)
+# Run ONE agent at a time (both use port 8080)
+
+# Expense audit agent:
 uv run adk web expense_agent
 
-# Or launch via agents-cli
+# Monthly report agent (run separately):
+uv run adk web audit_assistant
+
+# Or launch via agents-cli:
 uv run agents-cli playground
 ```
 
 Open http://127.0.0.1:8080 in your browser.
-
-For the monthly report companion agent:
-
-```bash
-uv run adk web audit_assistant
-```
 
 ---
 
@@ -253,7 +251,7 @@ uv run agents-cli eval grade --config tests/eval/eval_config.yaml
 ## Generate Monthly Report
 
 1. Open `audit_assistant` in ADK Playground: `uv run adk web audit_assistant`
-2. Type: `生成2026年6月稽核月報` (or any month)
+2. Type: `Generate audit report for June 2026` (Traditional Chinese: `生成2026年6月稽核月報`)
 3. Click **Artifacts** panel → download the PPTX
 
 The report contains: cover, overview stats, risk flag bar chart, top suspicious cases (names masked), and a Gemini-generated risk summary.
