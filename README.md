@@ -264,12 +264,12 @@ The report contains: cover, overview stats, risk flag bar chart, top suspicious 
 |---|---|
 | ISO/IEC 27001 A.8.11 | PII masking at `security_checkpoint`; name masking in all reports |
 | ISO/IEC 27001 A.8.28 | Prompt injection defense — CRITICAL escalation before any LLM node |
-| ISO/IEC 27001 A.5.3 | HITL — human auditor retains final approval authority |
+| ISO/IEC 27001 A.5.3 | HITL segregation — human auditor retains final approval authority |
 | ISO/IEC 27001 A.16.1.7 | SHA-256 `content_hash` per audit record (non-repudiation prototype) |
 | ISO/IEC 27001 A.12.4 | Append-only `audit_log.jsonl` with Case ID traceback |
-| ISO/IEC 42001 Clause 8.4 | Hard-rule + LLM hybrid; injection defense documented |
+| ISO/IEC 42001 Clause 8.4 | Hard-rule + LLM hybrid; injection defense explicitly implemented |
 | ISO/IEC 42001 Clause 9.1 | HITL at every high-risk decision point |
-| ISO/IEC 42001 Clause 6.2 | AI disclaimer on every generated report; plain-language flag explanations |
+| ISO/IEC 42001 Clause 6.2 | AI disclaimer on every generated report cover; plain-language flag explanations |
 
 ---
 
