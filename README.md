@@ -293,7 +293,7 @@ Upgrade from passive post-submission detection to active pre-submission preventi
 Privacy-preserving design: the warning confirms the invoice exists without revealing the original submitter's identity (ISO/IEC 27001:2022 A.8.11). The security value is twofold:
 
 - **Deterrence** — most duplicate submissions are accidental; a visible warning stops them before they reach the auditor
-- **Intent evidence** — if the warning is shown and the employee submits anyway, that act is logged as deliberate circumvention of a known AI control (ISO/IEC 42001:2023 Clause 9.1 audit trail), substantially strengthening the legal standing of the monthly report
+- **Intent evidence** — if the warning is shown and the employee submits anyway, that act is logged as deliberate circumvention of a known AI control (ISO/IEC 27001:2022 A.5.28 and ISO/IEC 42001:2023 Clause 9.1 audit trail), substantially strengthening the legal standing of the monthly report
 
 This pairs with the existing `content_hash` mechanism to form a complete **"pre-submission warning → post-submission tamper-proof record"** defense chain.
 
