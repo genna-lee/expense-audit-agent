@@ -260,16 +260,20 @@ The report contains: cover, overview stats, risk flag bar chart, top suspicious 
 
 ## ISO Compliance
 
-| Control | Implementation |
-|---|---|
-| ISO/IEC 27001:2022 A.8.11 | PII masking at `security_checkpoint`; name masking in all reports |
-| ISO/IEC 27001:2022 A.8.28 | Prompt injection defense — CRITICAL escalation before any LLM node |
-| ISO/IEC 27001:2022 A.5.3 | HITL segregation — human auditor retains final approval authority |
-| ISO/IEC 27001:2022 A.5.28 | SHA-256 `content_hash` per audit record (non-repudiation prototype) |
-| ISO/IEC 27001:2022 A.8.15 | Append-only `audit_log.jsonl` with Case ID traceback |
-| ISO/IEC 42001:2023 Clause 8.4 | Hard-rule + LLM hybrid; injection defense explicitly implemented |
-| ISO/IEC 42001:2023 Clause 9.1 | HITL at every high-risk decision point |
-| ISO/IEC 42001:2023 Clause 6.2 | AI disclaimer on every generated report cover; plain-language flag explanations |
+| Control | STRIDE | Implementation |
+|---|---|---|
+| ISO/IEC 27001:2022 A.8.11 | I | PII masking at `security_checkpoint`; name masking in all reports |
+| ISO/IEC 27001:2022 A.8.28 | S, T | Prompt injection defense — CRITICAL escalation before any LLM node |
+| ISO/IEC 27001:2022 A.5.3 | E | HITL segregation — human auditor retains final approval authority |
+| ISO/IEC 27001:2022 A.5.28 | R | SHA-256 `content_hash` per audit record (non-repudiation prototype) |
+| ISO/IEC 27001:2022 A.8.15 | R | Append-only `audit_log.jsonl` with Case ID traceback |
+| ISO/IEC 42001:2023 Clause 8.4 | T, E | Hard-rule + LLM hybrid; injection defense explicitly implemented |
+| ISO/IEC 42001:2023 Clause 9.1 | E | HITL at every high-risk decision point |
+| ISO/IEC 42001:2023 Clause 6.2 | — † | AI disclaimer on every generated report cover; plain-language flag explanations |
+
+*STRIDE: S=Spoofing · T=Tampering · R=Repudiation · I=Information Disclosure · D=Denial of Service · E=Elevation of Privilege*
+
+*† Clause 6.2 addresses AI transparency obligations — a governance requirement not formally covered by the original STRIDE threat model (designed for software security). Nearest category is I (Information Disclosure / Confidentiality), but no established consensus exists for mapping AI transparency controls to STRIDE.*
 
 ---
 
