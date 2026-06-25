@@ -121,7 +121,7 @@ expense-audit-agent/
 
 ```bash
 # Add a blacklisted vendor
-# Edit expense_agent/data/vendors.json → add entry with "status": "歇業"
+# Edit expense_agent/data/vendors.json → add entry with "status": "歇業" or "status": "註銷"
 
 # Adjust spending caps
 # Edit expense_agent/data/policy.json → update per-category limits
