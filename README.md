@@ -281,7 +281,7 @@ The report contains: cover, overview stats, risk flag bar chart, top suspicious 
 
 ### Near-term
 
-**6. Real-time invoice deduplication warning (Preventative Control)**
+**Real-time invoice deduplication warning (Preventative Control)**
 
 Upgrade from passive post-submission detection to active pre-submission prevention. When an employee enters an `invoice_no`, the system immediately cross-checks `audit_log.jsonl` and displays a prominent warning before the claim is submitted:
 
@@ -297,7 +297,7 @@ Privacy-preserving design: the warning confirms the invoice exists without revea
 
 This pairs with the existing `content_hash` mechanism to form a complete **"pre-submission warning → post-submission tamper-proof record"** defense chain.
 
-**7. Attendance cross-reference for travel fraud** *(requires PDPA compliance review)*
+**Attendance cross-reference for travel fraud** *(requires PDPA compliance review)*
 
 Cross-reference claimed travel dates against HR badge/check-in records. If an employee claims hotel reimbursement for a business trip but office records show them clocking in at headquarters that same day, `fraud_detector` flags it as a phantom trip — extending Case D from policy-cap checks into physical-presence verification.
 
