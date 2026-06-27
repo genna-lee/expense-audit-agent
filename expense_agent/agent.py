@@ -154,6 +154,54 @@ def parse_and_route(ctx: Context, node_input: Any) -> Event:
             expense.status = "REJECTED"
             return Event(output=expense, route="record_outcome", state={"expense": expense.model_dump()})
     else:
+        # ── Rate limit & lock check (STRIDE: D — DoS prevention) ──
+        submitter_raw = str(raw_dict.get("submitter", "Unknown"))
+        if _is_locked(submitter_raw):
+            case_id = ctx.state.get("case_id") or _generate_case_id()
+            locked_expense = ExpenseReport(
+                amount=0.0,
+                submitter=submitter_raw,
+                category=str(raw_dict.get("category", "Unknown")),
+                description=str(raw_dict.get("description", "")),
+                date=str(raw_dict.get("date", "Unknown")),
+                status="REJECTED",
+            )
+            print(f"[!] [RATE_LIMIT] Locked account blocked: {submitter_raw}")
+            return Event(
+                output=locked_expense,
+                route="record_outcome",
+                state={
+                    "expense": locked_expense.model_dump(),
+                    "case_id": case_id,
+                    "fraud_flags": ["Account locked: daily submission limit exceeded. Contact system administrator."],
+                },
+            )
+        try:
+            _rl_policy = _load_policy()
+            rate_msg, is_hard = _check_rate_limit(submitter_raw, _rl_policy)
+        except Exception:
+            rate_msg, is_hard = None, False
+        if is_hard and rate_msg:
+            case_id = ctx.state.get("case_id") or _generate_case_id()
+            rl_expense = ExpenseReport(
+                amount=0.0,
+                submitter=submitter_raw,
+                category=str(raw_dict.get("category", "Unknown")),
+                description=str(raw_dict.get("description", "")),
+                date=str(raw_dict.get("date", "Unknown")),
+                status="REJECTED",
+            )
+            print(f"[!] [RATE_LIMIT] Hard limit exceeded, account locked: {submitter_raw}")
+            return Event(
+                output=rl_expense,
+                route="record_outcome",
+                state={
+                    "expense": rl_expense.model_dump(),
+                    "case_id": case_id,
+                    "fraud_flags": [rate_msg],
+                },
+            )
+
         raw_amount = raw_dict.get("amount", "")
         amount = _safe_float(raw_amount)
         if amount is None:
@@ -298,6 +346,9 @@ _LEDGER_PATH = Path(
 _AUDIT_LOG_PATH = Path(
     os.environ.get("AUDIT_LOG_PATH", str(_DATA_DIR / "audit_log.jsonl"))
 )
+_LOCKED_ACCOUNTS_PATH = Path(
+    os.environ.get("LOCKED_ACCOUNTS_PATH", str(_DATA_DIR / "locked_accounts.json"))
+)
 
 
 def _load_policy() -> dict:
@@ -370,6 +421,8 @@ def _append_audit_log(expense: ExpenseReport, ctx: Context) -> None:
         risk_level = "NONE"
     elif any("CRITICAL" in str(f) or "注入" in str(f) or "Injection" in str(f) for f in fraud_flags):
         risk_level = "CRITICAL"
+    elif any("Rate limit" in str(f) or "Account locked" in str(f) for f in fraud_flags):
+        risk_level = "SECURITY"
     elif fraud_flags:
         risk_level = "HIGH"
     else:
@@ -444,6 +497,93 @@ def _check_invoice_duplicate(invoice_no: str) -> Optional[dict]:
     return None
 
 
+def _get_today_submission_count(submitter: str) -> int:
+    """Count today's submissions for a given submitter from audit_log."""
+    today = datetime.now(timezone.utc).date().isoformat()
+    count = 0
+    if not _AUDIT_LOG_PATH.exists():
+        return 0
+    try:
+        with open(_AUDIT_LOG_PATH, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    entry = json.loads(line)
+                    if entry.get("submitter") == submitter:
+                        if entry.get("timestamp", "")[:10] == today:
+                            count += 1
+                except Exception:
+                    continue
+    except Exception:
+        pass
+    return count
+
+
+def _is_locked(submitter: str) -> bool:
+    """Check if submitter is in locked_accounts.json."""
+    if not _LOCKED_ACCOUNTS_PATH.exists():
+        return False
+    try:
+        with open(_LOCKED_ACCOUNTS_PATH, encoding="utf-8") as f:
+            return submitter in json.load(f)
+    except Exception:
+        return False
+
+
+def _lock_account(submitter: str) -> None:
+    """Add submitter to locked_accounts.json."""
+    _LOCKED_ACCOUNTS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    locked = []
+    if _LOCKED_ACCOUNTS_PATH.exists():
+        try:
+            with open(_LOCKED_ACCOUNTS_PATH, encoding="utf-8") as f:
+                locked = json.load(f)
+        except Exception:
+            pass
+    if submitter not in locked:
+        locked.append(submitter)
+        with open(_LOCKED_ACCOUNTS_PATH, "w", encoding="utf-8") as f:
+            json.dump(locked, f, ensure_ascii=False, indent=2)
+        print(f"[!] [RATE_LIMIT] Account locked: {submitter}")
+
+
+def _check_rate_limit(submitter: str, policy: dict) -> tuple:
+    """
+    Returns (flag_message, is_hard_limit).
+    flag_message is None if within limits.
+    is_hard_limit True when hard limit exceeded (account will be locked).
+    """
+    rate_config = policy.get("rate_limit", {})
+    if not rate_config:
+        return (None, False)
+    default_soft = rate_config.get("default_soft", 15)
+    default_hard = rate_config.get("default_hard", 30)
+    high_volume = rate_config.get("high_volume_submitters", {})
+    if submitter in high_volume:
+        limits = high_volume[submitter]
+        soft = limits.get("soft", default_soft)
+        hard = limits.get("hard", default_hard)
+    else:
+        soft, hard = default_soft, default_hard
+    count = _get_today_submission_count(submitter)
+    if count >= hard:
+        _lock_account(submitter)
+        return (
+            f"Rate limit exceeded: {submitter} submitted {count} claims today "
+            f"(hard limit: {hard}). Account locked — contact system administrator.",
+            True,
+        )
+    if count >= soft:
+        return (
+            f"Rate limit warning: {submitter} submitted {count} claims today "
+            f"(soft limit: {soft}). Please contact Finance department to confirm.",
+            False,
+        )
+    return (None, False)
+
+
 # ---------------------------------------------------------
 # 節點 4：防弊稽核（純 Python）
 # ---------------------------------------------------------
@@ -464,6 +604,15 @@ def fraud_detector(ctx: Context, node_input: ExpenseReport) -> Event:
     except Exception as e:
         print(f"[!] [FRAUD] policy.json 載入失敗: {e}，跳過政策檢查")
         policy = {}
+
+    # --- 0a. 速率限制軟上限（DoS 防護 — STRIDE: D）---
+    try:
+        rate_msg, is_hard = _check_rate_limit(node_input.submitter, policy)
+        if rate_msg and not is_hard:
+            flags.append(rate_msg)
+            print(f"[!] [RATE_LIMIT] Soft limit warning for: {node_input.submitter}")
+    except Exception as e:
+        print(f"[!] [RATE_LIMIT] Rate limit check failed: {e}")
 
     # --- 0. 重複發票偵測（Preventative Control）---
     if node_input.invoice_no:
