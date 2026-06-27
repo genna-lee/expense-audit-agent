@@ -97,5 +97,18 @@
     "misc_per_day_limit": 400,
     "transport_policy": "原則限大眾運輸，核實報支；自行開車需檢附相關證明",
     "description": "依據 113/5/16 院授主預字第1130101358號函修正(114/1/1 生效)：住宿費每夜上限平日3,500元、假日4,500元；雜費每日定額400元。申報出差天數超過實際行程天數視為浮報，應標記。此為一般週末規則；遇國定連假需依行政院辦公日曆表精算，列為未來精修。"
+  },
+  "injection_keywords": {
+    "_note": "Admin can add keywords here without changing code. NFKC normalization is applied before matching, so Cyrillic/fullwidth lookalikes are also caught.",
+    "english": [
+      "ignore", "bypass", "force approve", "auto-approval", "override",
+      "disregard", "approve immediately", "ignore rules", "approve this",
+      "forget previous", "skip review", "circumvent"
+    ],
+    "chinese": [
+      "忽略", "無視", "繞過", "強制核准", "立即批准",
+      "忽略所有規則", "不要管規則", "跳過審核", "直接批准",
+      "請批准", "馬上核准"
+    ]
   }
 }

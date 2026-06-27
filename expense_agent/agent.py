@@ -3,6 +3,7 @@ import os
 import json
 import base64
 import re
+import unicodedata
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Optional
@@ -257,10 +258,16 @@ def security_checkpoint(ctx: Context, node_input: ExpenseReport) -> Event:
         print(f"[*] [SECURITY] PII Cleaned. Redacted: {redacted_categories}")
 
     # 防禦機制 2：抵禦 Prompt Injection (提示詞注入攻擊)
-    # 在乾淨的字串中尋找惡意指令
-    description_lower = redacted_desc.lower()
-    suspicious_keywords = ["ignore", "bypass", "force approve", "auto-approval", "override"]
-    if any(kw in description_lower for kw in suspicious_keywords):
+    # NFKC 正規化：將西里爾文、全形字母等 Unicode 變體還原為 ASCII，防止 іgnore 等偽裝繞過
+    description_normalized = unicodedata.normalize("NFKC", redacted_desc).lower()
+    # 從 policy.json 讀取關鍵字（管理員可直接編輯 JSON，無需改程式碼）
+    try:
+        _policy_for_keywords = _load_policy()
+        kw_config = _policy_for_keywords.get("injection_keywords", {})
+        suspicious_keywords = kw_config.get("english", []) + kw_config.get("chinese", [])
+    except Exception:
+        suspicious_keywords = ["ignore", "bypass", "force approve", "auto-approval", "override"]
+    if any(kw in description_normalized for kw in suspicious_keywords):
         print("[!] [SECURITY] Prompt Injection detected! Bypassing LLM.")
         # 抓到了！直接由 Python「偽造」一份極度危險的風險報告！
         risk_alert = RiskAssessment(
