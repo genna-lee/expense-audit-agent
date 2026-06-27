@@ -624,7 +624,7 @@ async def human_approval(ctx: Context, node_input: RiskAssessment) -> Event:
         return
 
     # 人類回覆後，系統會自動帶著資料從這裡「喚醒 (Resume)」
-    decision = str(ctx.resume_inputs["approval_decision"]).strip().lower()
+    decision = str(ctx.resume_inputs.get("approval_decision", "")).strip().lower()
     expense_dict = ctx.state.get("expense", {})
     expense = ExpenseReport(**expense_dict)
     
