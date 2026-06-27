@@ -5,12 +5,13 @@ CLI usage:
     uv run python -m expense_agent.report
     uv run python -m expense_agent.report --log tests/demo_audit_log.jsonl --month 2026-06 --out reports/
 
-5-page PPTX:
+6-page PPTX:
   1. Cover
   2. Overview Statistics
   3. Risk Flag Statistics
   4. Top Suspicious Cases (masked names + case_id)
-  5. Risk Summary & Recommendations (Gemini-generated)
+  5. Security Anomalies (rate-limit + injection events, STRIDE: D · S · T)
+  6. Risk Summary & Recommendations (Gemini-generated)
 
 Color scheme:
   - Cover: Navy #1F3864 background, white text
@@ -111,6 +112,7 @@ def classify_flags(entries: list[dict]) -> dict[str, int]:
         "Over-Budget":       0,
         "Travel Fraud":      0,
         "Injection / PII":   0,
+        "Rate Limit":        0,
         "Other":             0,
     }
     for e in entries:
@@ -130,6 +132,8 @@ def classify_flags(entries: list[dict]) -> dict[str, int]:
             elif "Injection" in f or "注入" in f or "PII" in f or "REDACTED" in f \
                     or "Security Event" in f:
                 counts["Injection / PII"] += 1
+            elif "Rate limit" in f or "Account locked" in f:
+                counts["Rate Limit"] += 1
             else:
                 counts["Other"] += 1
     return counts
@@ -143,16 +147,18 @@ def build_stats(entries: list[dict]) -> dict[str, Any]:
     pending  = total - approved - rejected
     total_amt   = sum(e.get("amount", 0) for e in entries)
     flagged_amt = sum(e.get("amount", 0) for e in entries if e.get("fraud_flags"))
-    high_risk   = sum(1 for e in entries if e.get("risk_level") in ("HIGH", "CRITICAL"))
+    high_risk       = sum(1 for e in entries if e.get("risk_level") in ("HIGH", "CRITICAL"))
+    security_events = sum(1 for e in entries if e.get("risk_level") in ("SECURITY", "CRITICAL"))
     return {
-        "total":       total,
-        "approved":    approved,
-        "rejected":    rejected,
-        "pending":     pending,
-        "total_amt":   total_amt,
-        "flagged_amt": flagged_amt,
-        "high_risk":   high_risk,
-        "flag_counts": classify_flags(entries),
+        "total":            total,
+        "approved":         approved,
+        "rejected":         rejected,
+        "pending":          pending,
+        "total_amt":        total_amt,
+        "flagged_amt":      flagged_amt,
+        "high_risk":        high_risk,
+        "security_events":  security_events,
+        "flag_counts":      classify_flags(entries),
     }
 
 
@@ -463,6 +469,116 @@ def slide_top_cases(prs: Presentation, cases: list[dict], month: str) -> None:
         _render_cases_page(prs, chunk, month, idx, len(chunks))
 
 
+_SEC_COL_DEFS = [
+    ("Case ID",    1.8),
+    ("Masked Name",1.2),
+    ("Date",       1.2),
+    ("Type",       1.6),
+    ("Detail",     5.8),
+    ("Status",     1.2),
+]
+_SEC_ROWS_PER_PAGE = 6
+
+
+def _event_type(entry: dict) -> str:
+    """Derive security event label from risk_level and flag text."""
+    rl = entry.get("risk_level", "")
+    flags = [str(f) for f in entry.get("fraud_flags", [])]
+    if rl == "CRITICAL":
+        return "Injection / PII"
+    if any("Account locked" in f for f in flags):
+        return "Rate Limit (Hard)"
+    if any("Rate limit" in f for f in flags):
+        return "Rate Limit (Soft)"
+    return rl
+
+
+def _render_security_page(
+    prs: Presentation,
+    cases: list[dict],
+    month: str,
+    page_num: int,
+    total_pages: int,
+) -> None:
+    slide = prs.slides.add_slide(prs.slide_layouts[6])
+    _fill_bg(slide, C_WHITE)
+
+    hdr = slide.shapes.add_shape(1, Inches(0), Inches(0), SLIDE_W, Inches(0.9))
+    hdr.fill.solid(); hdr.fill.fore_color.rgb = C_RED; hdr.line.fill.background()
+    suffix = f"  ({page_num}/{total_pages})" if total_pages > 1 else ""
+    _add_textbox(slide, Inches(0.3), Inches(0.1), Inches(12), Inches(0.7),
+                 f"Security Anomalies  |  {month}  |  STRIDE: D · S · T{suffix}",
+                 font_size=24, bold=True, color=C_WHITE)
+
+    if not cases:
+        _add_textbox(slide, Inches(1), Inches(3), Inches(11), Inches(1),
+                     "No security anomalies detected this month.",
+                     font_size=28, color=RGBColor(0x27, 0xAE, 0x60), align=PP_ALIGN.CENTER)
+        return
+
+    n_cols  = len(_SEC_COL_DEFS)
+    n_rows  = len(cases) + 1
+    hdr_h   = Inches(0.55)
+    data_h  = Inches(0.95)
+    total_h = hdr_h + data_h * len(cases)
+    total_w = Inches(12.8)
+
+    tbl = slide.shapes.add_table(
+        n_rows, n_cols,
+        Inches(0.27), Inches(1.0), total_w, total_h,
+    ).table
+
+    tbl.rows[0].height = hdr_h
+    for ri in range(1, n_rows):
+        tbl.rows[ri].height = data_h
+
+    col_widths = [Inches(w) for _, w in _SEC_COL_DEFS]
+    for ci, cw in enumerate(col_widths):
+        tbl.columns[ci].width = cw
+
+    for ci, (header, _) in enumerate(_SEC_COL_DEFS):
+        _style_cell(tbl.cell(0, ci), header,
+                    font_size=13, bold=True, bg=C_RED, color=C_WHITE,
+                    align=PP_ALIGN.CENTER)
+
+    C_ORANGE = RGBColor(0xD3, 0x7A, 0x0B)
+    for ri, entry in enumerate(cases, start=1):
+        is_critical = entry.get("risk_level") == "CRITICAL"
+        row_bg  = RGBColor(0xFF, 0xE8, 0xE8) if is_critical else RGBColor(0xFF, 0xF4, 0xE0)
+        evt     = _event_type(entry)
+        t_color = C_RED if is_critical else C_ORANGE
+        flags   = entry.get("fraud_flags", [])
+        raw     = flags[0] if flags else ""
+        detail  = raw[:120] + "…" if len(raw) > 120 else raw
+        status  = entry.get("status", "")
+        values = [
+            (entry.get("case_id", ""),             C_DARK,                                        PP_ALIGN.LEFT),
+            (mask_name(entry.get("submitter", "")), C_DARK,                                        PP_ALIGN.LEFT),
+            (entry.get("timestamp", "")[:10],       C_DARK,                                        PP_ALIGN.CENTER),
+            (evt,                                   t_color,                                       PP_ALIGN.CENTER),
+            (detail,                                C_DARK,                                        PP_ALIGN.LEFT),
+            (status,                                C_RED if status == "REJECTED" else C_DARK,     PP_ALIGN.CENTER),
+        ]
+        for ci, (val, color, align) in enumerate(values):
+            _style_cell(tbl.cell(ri, ci), val, font_size=13, bg=row_bg, color=color, align=align)
+
+
+def slide_security_anomalies(prs: Presentation, entries: list[dict], month: str) -> None:
+    """Page 5: Security Anomalies — rate-limit (SECURITY) and injection (CRITICAL) events."""
+    sec_entries = [e for e in entries if e.get("risk_level") in ("SECURITY", "CRITICAL")]
+    sec_entries.sort(key=lambda e: (
+        0 if e.get("risk_level") == "CRITICAL" else 1,
+        e.get("timestamp", ""),
+    ))
+    if not sec_entries:
+        _render_security_page(prs, [], month, 1, 1)
+        return
+    chunks = [sec_entries[i:i + _SEC_ROWS_PER_PAGE]
+              for i in range(0, len(sec_entries), _SEC_ROWS_PER_PAGE)]
+    for idx, chunk in enumerate(chunks, start=1):
+        _render_security_page(prs, chunk, month, idx, len(chunks))
+
+
 def slide_risk_summary(prs: Presentation, stats: dict, month: str, gemini_text: str) -> None:
     """Page 5: Risk Summary & Recommendations (Gemini-generated)"""
     slide = prs.slides.add_slide(prs.slide_layouts[6])
@@ -626,6 +742,7 @@ def generate_report(
     slide_overview(prs, stats, month)
     slide_flag_stats(prs, stats, month)
     slide_top_cases(prs, top_cas, month)
+    slide_security_anomalies(prs, entries, month)
     slide_risk_summary(prs, stats, month, gemini_text)
 
     out_dir.mkdir(parents=True, exist_ok=True)
