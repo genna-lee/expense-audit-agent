@@ -46,6 +46,15 @@ class RiskAssessment(BaseModel):
 # ---------------------------------------------------------
 # 輔助函式 (Helper Functions)
 # ---------------------------------------------------------
+def _safe_float(value) -> Optional[float]:
+    """Safely convert to float; returns None on failure instead of raising."""
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
 def extract_expense_data(payload: Any) -> dict:
     """
     從原始字典或 Pub/Sub Base64 格式中萃取 JSON。
@@ -144,8 +153,33 @@ def parse_and_route(ctx: Context, node_input: Any) -> Event:
             expense.status = "REJECTED"
             return Event(output=expense, route="record_outcome", state={"expense": expense.model_dump()})
     else:
+        raw_amount = raw_dict.get("amount", "")
+        amount = _safe_float(raw_amount)
+        if amount is None:
+            case_id = ctx.state.get("case_id") or _generate_case_id()
+            minimal_expense = ExpenseReport(
+                amount=0.0,
+                submitter=str(raw_dict.get("submitter", "Unknown")),
+                category=str(raw_dict.get("category", "Unknown")),
+                description=str(raw_dict.get("description", "No description")),
+                date=str(raw_dict.get("date", "Unknown")),
+            )
+            risk_alert = RiskAssessment(
+                risk_level="HIGH",
+                reasoning=f"Invalid input: 'amount' must be a number (received: '{raw_amount}'). Claim flagged for manual review."
+            )
+            print(f"[!] [PARSE] Invalid amount: '{raw_amount}'. Routing to human_approval.")
+            return Event(
+                output=risk_alert,
+                route="human_approval",
+                state={
+                    "expense": minimal_expense.model_dump(),
+                    "case_id": case_id,
+                    "fraud_flags": ["Invalid input: 'amount' must be a number"],
+                }
+            )
         expense_dict = {
-            "amount": float(raw_dict.get("amount", 0.0)),
+            "amount": amount,
             "submitter": raw_dict.get("submitter", "Unknown"),
             "category": raw_dict.get("category", "Unknown"),
             "description": raw_dict.get("description", "No description"),
@@ -157,12 +191,8 @@ def parse_and_route(ctx: Context, node_input: Any) -> Event:
             "vendor_tax_id": raw_dict.get("vendor_tax_id"),
             "trip_days": raw_dict.get("trip_days"),
             "actual_trip_days": raw_dict.get("actual_trip_days"),
-            "hotel_per_night": (
-                float(raw_dict["hotel_per_night"]) if raw_dict.get("hotel_per_night") is not None else None
-            ),
-            "misc_per_day": (
-                float(raw_dict["misc_per_day"]) if raw_dict.get("misc_per_day") is not None else None
-            ),
+            "hotel_per_night": _safe_float(raw_dict.get("hotel_per_night")),
+            "misc_per_day": _safe_float(raw_dict.get("misc_per_day")),
         }
     
     expense = ExpenseReport(**expense_dict)
