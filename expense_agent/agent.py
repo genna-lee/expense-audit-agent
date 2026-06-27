@@ -636,10 +636,11 @@ async def human_approval(ctx: Context, node_input: RiskAssessment) -> Event:
     yield Event(output=expense, state={"expense": expense.model_dump()})
 
 @node
-def record_outcome(ctx: Context, node_input: ExpenseReport) -> ExpenseReport:
+def record_outcome(ctx: Context, node_input: ExpenseReport) -> dict:
     """
     節點 6：紀錄最終結果 (收斂節點 Fan-in)。
-    Node 6: Final node. Records and prints the final outcome.
+    Node 6: Final node. Records outcome and returns a clean user-facing message.
+    Internal details (fraud flags, rule triggers) stay in audit_log only — not exposed to submitter.
     """
     case_id = ctx.state.get("case_id", "UNKNOWN")
     print(f"\n[v] [OUTCOME RECORDED] [{case_id}] Expense for {node_input.submitter} (${node_input.amount}) is now: {node_input.status}\n")
@@ -647,7 +648,22 @@ def record_outcome(ctx: Context, node_input: ExpenseReport) -> ExpenseReport:
         _append_audit_log(node_input, ctx)
     except Exception as e:
         print(f"[!] [AUDIT] audit_log 寫入失敗: {e}")
-    return node_input
+
+    if node_input.status == "APPROVED":
+        message = (
+            f"APPROVED\n"
+            f"Case ID: {case_id}\n"
+            f"Your expense claim has been processed successfully."
+        )
+    else:
+        message = (
+            f"REJECTED\n"
+            f"Case ID: {case_id}\n"
+            f"This claim requires further review. "
+            f"Please contact your Finance department for assistance."
+        )
+
+    return {"status": node_input.status, "case_id": case_id, "message": message}
 
 # ---------------------------------------------------------
 # 有向圖邊界定義 (Graph Wiring)
