@@ -34,9 +34,10 @@ ISO/IEC 27001:2022 A.8.28 and ISO/IEC 42001:2023 Clause 8.4 both require explici
 ```mermaid
 flowchart TD
     A["📥 Expense Claim (JSON)"] --> B["parse_and_route\n[LlmAgent]"]
+    B -->|locked / hard rate limit| H
     B -->|amount < NT$100| C["⚡ auto_approve"]
     B -->|amount ≥ NT$100| D["🔒 security_checkpoint\nPII redaction + injection defense"]
-    D --> E["🔍 fraud_detector\n4 hard-rule checks"]
+    D --> E["🔍 fraud_detector\n5 hard-rule checks + rate limit"]
     E -->|fraud flags| G["👤 human_approval\nHITL — yes / no"]
     E -->|clean| F["🤖 risk_reviewer\nLLM soft review"]
     F --> G
@@ -51,7 +52,7 @@ flowchart TD
 Expense Claim (JSON)
   → parse_and_route       [LlmAgent — field extraction & validation]
   → security_checkpoint   [PII masking + prompt injection defense]
-  → fraud_detector        [4 hard-rule checks + cross-session ledger]
+  → fraud_detector        [5 hard-rule checks + rate limit + cross-session ledger]
       ├─ fraud flags  → human_approval  [HITL]
       └─ clean        → risk_reviewer   [LLM soft review] → human_approval
   → record_outcome        [audit_log.jsonl + SHA-256 content_hash]
@@ -72,10 +73,11 @@ expense-audit-agent/
 │   ├── report.py               # python-pptx monthly report generator
 │   ├── seed_audit_log.py       # Demo data seeder
 │   └── data/
-│       ├── audit_log.jsonl     # Immutable audit trail (append-only)
-│       ├── policy.json         # Spending caps by category (configurable)
+│       ├── audit_log.jsonl         # Immutable audit trail (append-only)
+│       ├── locked_accounts.json    # Rate-limited accounts (auto-managed)
+│       ├── policy.json             # Spending caps, rate limits, injection keywords (configurable)
 │       ├── purchase_ledger.jsonl   # Cross-session purchase history
-│       └── vendors.json        # Vendor blacklist (status: 歇業 = defunct)
+│       └── vendors.json            # Vendor blacklist (status: 歇業 = defunct)
 │
 ├── audit_assistant/            # Companion agent — monthly report generator
 │   └── agent.py                # LlmAgent: generates PPTX via ADK Artifacts
@@ -107,15 +109,18 @@ expense-audit-agent/
 | 2 | **Split-purchase evasion** — same submitter, cumulative ≥ NT$150,000 within 7 days | `data/purchase_ledger.jsonl` |
 | 3 | **Over-budget** — claimed amount exceeds per-category spending cap | `data/policy.json` |
 | 4 | **Travel fraud** — inflated days, hotel > NT$3,500/4,500, misc > NT$400/day | `data/policy.json` |
+| 5 | **Duplicate invoice** — `invoice_no` cross-checked against all prior records; submitter identity protected (ISO/IEC 27001:2022 A.8.11) | `data/audit_log.jsonl` |
 
 ### Security Controls
 
 | # | Control | Standard |
 |---|---|---|
-| 5 | **Prompt injection defense** — fires before any LLM node; CRITICAL escalation | ISO/IEC 27001:2022 A.8.28 |
+| 5 | **Prompt injection defense** — NFKC normalization + config-driven keyword list; fires before any LLM node; CRITICAL escalation | ISO/IEC 27001:2022 A.8.28 |
 | 6 | **PII redaction** — National ID, credit card, email stripped from LLM context | ISO/IEC 27001:2022 A.8.11 |
 | 7 | **Name masking in reports** — 王三豐 → 王○豐 (first+last preserved for traceback) | ISO/IEC 27001:2022 A.8.11 |
 | 8 | **Content hash** — SHA-256 of `case_id\|amount\|submitter\|description` per record | ISO/IEC 27001:2022 A.5.28 |
+| 9 | **Rate limiting + account lockout** — soft limit flags to human auditor; hard limit auto-locks account; configurable per-user thresholds in `policy.json` | ISO/IEC 27001:2022 A.8.6 |
+| 10 | **Output information control** — `record_outcome` returns Case ID only; fraud flags and rule triggers stay in `audit_log` and are never exposed to the submitter | ISO/IEC 27001:2022 A.8.11 |
 
 ### Configuration — Zero Code Changes
 
@@ -125,6 +130,16 @@ expense-audit-agent/
 
 # Adjust spending caps
 # Edit expense_agent/data/policy.json → update per-category limits
+
+# Add / remove prompt-injection keywords (supports English + Traditional Chinese)
+# Edit expense_agent/data/policy.json → "injection_keywords" → "english" / "chinese"
+
+# Adjust rate limits (default: soft=15, hard=30 submissions/day)
+# Edit expense_agent/data/policy.json → "rate_limit" → "default_soft" / "default_hard"
+# High-volume users (e.g. finance clerks) can be whitelisted under "high_volume_submitters"
+
+# Unlock a locked account
+# Edit expense_agent/data/locked_accounts.json → remove the submitter name from the list
 ```
 
 ---
@@ -256,7 +271,7 @@ uv run agents-cli eval grade --config tests/eval/eval_config.yaml
 2. Type: `Generate audit report for June 2026` (Traditional Chinese: `生成2026年6月稽核月報`)
 3. Click **Artifacts** panel → download the PPTX
 
-The report contains: cover, overview stats, risk flag bar chart, top suspicious cases (names masked), and a Gemini-generated risk summary.
+The report contains: cover, overview stats, risk flag bar chart, top suspicious cases (names masked), security anomalies (rate-limit and injection events), and a Gemini-generated risk summary.
 
 ---
 
@@ -317,8 +332,8 @@ Cross-reference claimed travel dates against HR badge/check-in records. If an em
 
 | Limitation | Impact | Mitigated by |
 |---|---|---|
-| **Gemini API rate limits (429)** — `risk_reviewer` may hit quota under sustained concurrent load | LLM soft-review step unavailable | `risk_reviewer` timeout fallback: on any API error, produces a HIGH-risk `RiskAssessment` and routes to human auditor (fail-safe, never crashes) |
-| **Gemini API outage** — Google Cloud outage renders LLM nodes unavailable | Same as above | Same fallback; `fraud_detector` and `security_checkpoint` are pure Python and remain fully operational during any LLM outage |
+| **Gemini API rate limits (429)** — `risk_reviewer` may hit quota under sustained concurrent load | LLM soft-review step unavailable | `fraud_detector` and `security_checkpoint` are pure Python and remain fully operational; production recommendation: add retry / circuit-breaker middleware at the infrastructure layer |
+| **Gemini API outage** — Google Cloud outage renders LLM nodes unavailable | Same as above | Same; hard-rule nodes are LLM-independent and unaffected by any Gemini outage |
 | **Concurrent requests** — ADK in local mode processes requests sequentially; heavy traffic creates a queue | Latency increases linearly with queue depth | Designed for moderate-volume enterprise use; Pub/Sub trigger ready for horizontal scaling |
 | **Public holiday detection** — travel fraud check uses a weekday approximation (Fri/Sat = weekend) | National holidays may be miscalculated | Near-term roadmap item; full fix requires official administrative calendar (e.g. `workalendar` library) |
 | **HITL is binary** — auditor can only approve or reject; no "request more information" state | Cannot ask for supplementary documents within the workflow | Near-term roadmap item |
