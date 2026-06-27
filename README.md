@@ -232,6 +232,8 @@ Open `expense_agent` in the ADK Playground, paste any of the following into the 
 
 For Cases C (split-purchase) and D (travel fraud), see `tests/eval/datasets/`.
 
+> Custom test scenarios are easy to create: add vendors to `vendors.json` or adjust spending caps in `policy.json` — the agent evaluates all inputs against the configured rules, not hardcoded values.
+
 ---
 
 ## Run Evaluation
@@ -308,6 +310,18 @@ Cross-reference claimed travel dates against HR badge/check-in records. If an em
 - WORM / blockchain-anchored audit log for full ISO/IEC 27001:2022 A.5.28 non-repudiation
 - Multi-hop submitter relationship graph for department-level collusion detection
 - Cryptographic digital signatures on audit entries for court-admissible records
+
+---
+
+## Known Limitations
+
+| Limitation | Impact | Mitigated by |
+|---|---|---|
+| **Gemini API rate limits (429)** — `risk_reviewer` may hit quota under sustained concurrent load | LLM soft-review step unavailable | `risk_reviewer` timeout fallback: on any API error, produces a HIGH-risk `RiskAssessment` and routes to human auditor (fail-safe, never crashes) |
+| **Gemini API outage** — Google Cloud outage renders LLM nodes unavailable | Same as above | Same fallback; `fraud_detector` and `security_checkpoint` are pure Python and remain fully operational during any LLM outage |
+| **Concurrent requests** — ADK in local mode processes requests sequentially; heavy traffic creates a queue | Latency increases linearly with queue depth | Designed for moderate-volume enterprise use; Pub/Sub trigger ready for horizontal scaling |
+| **Public holiday detection** — travel fraud check uses a weekday approximation (Fri/Sat = weekend) | National holidays may be miscalculated | Near-term roadmap item; full fix requires official administrative calendar (e.g. `workalendar` library) |
+| **HITL is binary** — auditor can only approve or reject; no "request more information" state | Cannot ask for supplementary documents within the workflow | Near-term roadmap item |
 
 ---
 
