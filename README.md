@@ -34,14 +34,15 @@ ISO/IEC 27001:2022 A.8.28 and ISO/IEC 42001:2023 Clause 8.4 both require explici
 ```mermaid
 flowchart TD
     A["📥 Expense Claim (JSON)"] --> B["parse_and_route\n[LlmAgent]"]
-    B -->|locked / hard rate limit| H
-    B -->|amount < NT$100| C["⚡ auto_approve"]
-    B -->|amount ≥ NT$100| D["🔒 security_checkpoint\nPII redaction + injection defense"]
-    D --> E["🔍 fraud_detector\n5 hard-rule checks + rate limit"]
-    E -->|fraud flags| G["👤 human_approval\nHITL — yes / no"]
-    E -->|clean| F["🤖 risk_reviewer\nLLM soft review"]
+    B -->|locked / hard rate limit| H["📝 record_outcome\naudit_log.jsonl + content_hash"]
+    B -->|passes rate check| D["🔒 security_checkpoint\nPII redaction + injection defense"]
+    D -->|injection detected| G["👤 human_approval\nHITL — yes / no"]
+    D -->|clean| E["🔍 fraud_detector\n5 hard-rule checks + rate limit"]
+    E -->|fraud flags| G
+    E -->|"clean, amount ≥ NT$100"| F["🤖 risk_reviewer\nLLM soft review"]
+    E -->|"clean, amount < NT$100"| C["⚡ auto_approve"]
     F --> G
-    C --> H["📝 record_outcome\naudit_log.jsonl + content_hash"]
+    C --> H
     G --> H
     H --> I["📊 Monthly PPTX Report\nADK Artifacts download"]
 ```
@@ -51,11 +52,15 @@ flowchart TD
 ```
 Expense Claim (JSON)
   → parse_and_route       [LlmAgent — field extraction & validation]
+      ├─ locked / hard rate limit → record_outcome (REJECTED)
+      └─ passes rate check
   → security_checkpoint   [PII masking + prompt injection defense]
+      ├─ injection detected      → human_approval [HITL] → record_outcome
+      └─ clean
   → fraud_detector        [5 hard-rule checks + rate limit + cross-session ledger]
-      ├─ fraud flags  → human_approval  [HITL]
-      └─ clean        → risk_reviewer   [LLM soft review] → human_approval
-  → record_outcome        [audit_log.jsonl + SHA-256 content_hash]
+      ├─ fraud flags             → human_approval [HITL] → record_outcome
+      ├─ clean, amount ≥ NT$100  → risk_reviewer  [LLM soft review] → human_approval [HITL] → record_outcome
+      └─ clean, amount < NT$100  → auto_approve → record_outcome
   → Monthly PPTX Report   [downloadable via ADK Artifacts panel]
 ```
 
