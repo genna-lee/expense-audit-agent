@@ -120,12 +120,12 @@ expense-audit-agent/
 
 | # | Control | Standard |
 |---|---|---|
-| 5 | **Prompt injection defense** — NFKC normalization + config-driven keyword list; fires before any LLM node; CRITICAL escalation | ISO/IEC 27001:2022 A.8.28 |
-| 6 | **PII redaction** — National ID, credit card, email stripped from LLM context | ISO/IEC 27001:2022 A.8.11 |
-| 7 | **Name masking in reports** — 王三豐 → 王○豐 (first+last preserved for traceback) | ISO/IEC 27001:2022 A.8.11 |
-| 8 | **Content hash** — SHA-256 of `case_id\|amount\|submitter\|description` per record | ISO/IEC 27001:2022 A.5.28 |
-| 9 | **Rate limiting + account lockout** — soft limit flags to human auditor; hard limit auto-locks account; configurable per-user thresholds in `policy.json` | ISO/IEC 27001:2022 A.8.6 |
-| 10 | **Output information control** — `record_outcome` returns Case ID only; fraud flags and rule triggers stay in `audit_log` and are never exposed to the submitter | ISO/IEC 27001:2022 A.8.11 |
+| 1 | **Prompt injection defense** — NFKC normalization + config-driven keyword list; fires before any LLM node; CRITICAL escalation | ISO/IEC 27001:2022 A.8.28 |
+| 2 | **PII redaction** — National ID, credit card, email stripped from LLM context | ISO/IEC 27001:2022 A.8.11 |
+| 3 | **Name masking in reports** — 王三豐 → 王○豐 (first+last preserved for traceback) | ISO/IEC 27001:2022 A.8.11 |
+| 4 | **Content hash** — SHA-256 of `case_id\|amount\|submitter\|description` per record | ISO/IEC 27001:2022 A.5.28 |
+| 5 | **Rate limiting + account lockout** — soft limit flags to human auditor; hard limit auto-locks account; configurable per-user thresholds in `policy.json` | ISO/IEC 27001:2022 A.8.6 |
+| 6 | **Output information control** — `record_outcome` returns Case ID only; fraud flags and rule triggers stay in `audit_log` and are never exposed to the submitter | ISO/IEC 27001:2022 A.8.11 |
 
 ### Configuration — Zero Code Changes
 
