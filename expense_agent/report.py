@@ -478,6 +478,7 @@ _SEC_COL_DEFS = [
     ("Status",     1.2),
 ]
 _SEC_ROWS_PER_PAGE = 6
+_REC_PER_PAGE = 3        # max recommendations per Risk Summary slide
 
 
 def _event_type(entry: dict) -> str:
@@ -579,56 +580,105 @@ def slide_security_anomalies(prs: Presentation, entries: list[dict], month: str)
         _render_security_page(prs, chunk, month, idx, len(chunks))
 
 
-def slide_risk_summary(prs: Presentation, stats: dict, month: str, gemini_text: str) -> None:
-    """Page 5: Risk Summary & Recommendations (Gemini-generated)"""
+def _parse_risk_text(gemini_text: str) -> tuple[list[str], list[tuple[str, str]]]:
+    """Split Gemini risk text into (summary_lines, [(zh_rec, en_rec), ...])."""
+    lines = gemini_text.split("\n")
+    rec_start = None
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped.startswith("【") and ("建議" in stripped or "Recommendation" in stripped):
+            rec_start = i
+            break
+    if rec_start is None:
+        return lines, []
+
+    summary_lines = lines[:rec_start]
+    recommendations: list[tuple[str, str]] = []
+    current_zh: str | None = None
+
+    for line in lines[rec_start + 1:]:
+        stripped = line.strip()
+        if not stripped:
+            continue
+        is_zh = len(stripped) > 1 and stripped[0].isdigit() and stripped[1] == "."
+        is_en = line.startswith("   ")
+        if is_zh:
+            if current_zh is not None:
+                recommendations.append((current_zh, ""))
+            current_zh = stripped
+        elif is_en and current_zh is not None:
+            recommendations.append((current_zh, stripped))
+            current_zh = None
+
+    if current_zh is not None:
+        recommendations.append((current_zh, ""))
+    return summary_lines, recommendations
+
+
+def _render_risk_page(
+    prs: Presentation,
+    summary_lines: list[str],
+    recs_chunk: list[tuple[str, str]],
+    month: str,
+    page_idx: int,
+    total_pages: int,
+) -> None:
     slide = prs.slides.add_slide(prs.slide_layouts[6])
     _fill_bg(slide, C_WHITE)
 
     hdr = slide.shapes.add_shape(1, Inches(0), Inches(0), SLIDE_W, Inches(0.9))
     hdr.fill.solid(); hdr.fill.fore_color.rgb = C_NAVY; hdr.line.fill.background()
+    page_label = f"  ({page_idx}/{total_pages})" if total_pages > 1 else ""
     _add_textbox(slide, Inches(0.3), Inches(0.1), Inches(12), Inches(0.7),
-                 f"Risk Summary & Recommendations  |  {month}  ·  AI-Generated",
+                 f"Risk Summary & Recommendations  |  {month}  ·  AI-Generated{page_label}",
                  font_size=24, bold=True, color=C_WHITE)
 
-    txt_box = slide.shapes.add_textbox(Inches(0.5), Inches(1.0), Inches(12.3), Inches(6.0))
+    txt_box = slide.shapes.add_textbox(Inches(0.5), Inches(1.0), Inches(12.3), Inches(6.2))
     tf = txt_box.text_frame
     tf.word_wrap = True
 
-    for line in gemini_text.split("\n"):
-        line = line.strip()
-        if not line:
-            p = tf.add_paragraph()
-            p.space_after = Pt(3)
-            continue
+    def _p(text: str, size: int, bold: bool, color: RGBColor,
+           space_before: int = 0, space_after: int = 4) -> None:
         p = tf.add_paragraph()
-        run = p.add_run()
-        run.text = line
-        is_section = line.startswith("【") and "】" in line   # 【摘要】【建議】
-        is_zh_rec  = len(line) > 1 and line[1] == "." and line[0].isdigit()  # 1. 中文
-        is_en_rec  = line.startswith("   ")                                   # indented English
-        if is_section:
-            run.font.size  = Pt(17)
-            run.font.bold  = True
-            run.font.color.rgb = C_NAVY
-            p.space_before = Pt(10)
-            p.space_after  = Pt(4)
-        elif is_zh_rec:
-            run.font.size  = Pt(16)
-            run.font.bold  = True
-            run.font.color.rgb = C_RED
-            p.space_before = Pt(6)
-            p.space_after  = Pt(1)
-        elif is_en_rec:
-            run.text = line.strip()
-            run.font.size  = Pt(14)
-            run.font.bold  = False
-            run.font.color.rgb = RGBColor(0x7F, 0x8C, 0x8D)  # grey
-            p.space_after  = Pt(4)
-        else:
-            run.font.size  = Pt(16)
-            run.font.bold  = False
-            run.font.color.rgb = C_DARK
-            p.space_after  = Pt(4)
+        if text:
+            run = p.add_run()
+            run.text = text
+            run.font.size = Pt(size)
+            run.font.bold = bold
+            run.font.color.rgb = color
+        p.space_before = Pt(space_before)
+        p.space_after  = Pt(space_after)
+
+    if page_idx == 1:
+        for line in summary_lines:
+            stripped = line.strip()
+            if not stripped:
+                _p("", 14, False, C_DARK, space_after=2)
+                continue
+            is_section = stripped.startswith("【") and "】" in stripped
+            if is_section:
+                _p(stripped, 17, True, C_NAVY, space_before=4, space_after=4)
+            else:
+                _p(stripped, 15, False, C_DARK, space_after=3)
+        if recs_chunk:
+            _p("【改善建議 Recommendations】", 17, True, C_NAVY, space_before=8, space_after=4)
+
+    for zh_line, en_line in recs_chunk:
+        _p(zh_line, 16, True, C_RED, space_before=5, space_after=1)
+        if en_line:
+            _p(en_line, 14, False, RGBColor(0x7F, 0x8C, 0x8D), space_after=3)
+
+
+def slide_risk_summary(prs: Presentation, stats: dict, month: str, gemini_text: str) -> None:
+    """Risk Summary & Recommendations — auto-paginates at _REC_PER_PAGE recommendations per slide."""
+    summary_lines, recommendations = _parse_risk_text(gemini_text)
+    if not recommendations:
+        _render_risk_page(prs, summary_lines, [], month, 1, 1)
+        return
+    chunks = [recommendations[i:i + _REC_PER_PAGE]
+              for i in range(0, len(recommendations), _REC_PER_PAGE)]
+    for idx, chunk in enumerate(chunks, start=1):
+        _render_risk_page(prs, summary_lines if idx == 1 else [], chunk, month, idx, len(chunks))
 
 
 # ─────────────────────────────────────────────────────────
