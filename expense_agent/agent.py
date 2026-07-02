@@ -306,7 +306,8 @@ def security_checkpoint(ctx: Context, node_input: ExpenseReport) -> Event:
         print(f"[*] [SECURITY] PII Cleaned. Redacted: {redacted_categories}")
 
     # 防禦機制 2：抵禦 Prompt Injection (提示詞注入攻擊)
-    # NFKC 正規化：將西里爾文、全形字母等 Unicode 變體還原為 ASCII，防止 іgnore 等偽裝繞過
+    # NFKC 正規化：將全形字母等 Unicode 相容變體還原為半形 ASCII，防止全形 "ｉｇｎｏｒｅ" 等繞過
+    # 注意：NFKC 無法還原跨語系同形字（如西里爾文 і 冒充拉丁 i），此類攻擊不在目前防禦範圍內
     description_normalized = unicodedata.normalize("NFKC", redacted_desc).lower()
     # 從 policy.json 讀取關鍵字（管理員可直接編輯 JSON，無需改程式碼）
     try:

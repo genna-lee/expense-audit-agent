@@ -1,4 +1,4 @@
-# SmartAudit — ISO-Compliant AI Agent for Expense Fraud Detection
+# SmartAudit — ISO-aligned AI Agent for Expense Fraud Detection
 
 > Google × Kaggle 5-Day AI Agents Intensive | Track: Agents for Business
 
@@ -17,6 +17,7 @@ Traditional expense auditing fails in three ways:
 | Manual audits | Slow, costly, error-prone at scale |
 | Rule-based systems | Rigid, easily gamed by sophisticated actors |
 | No cross-transaction memory | Split-purchase evasion goes undetected per-claim |
+| Auditor fatigue | Leads to rubber-stamping on high-volume, low-value claims |
 
 **New AI-era threat:** Employees embed natural-language override instructions directly in expense descriptions to manipulate a naive LLM auditor:
 
@@ -33,35 +34,35 @@ ISO/IEC 27001:2022 A.8.28 and ISO/IEC 42001:2023 A.6.2.3 both require explicit d
 
 ```mermaid
 flowchart TD
-    A["📥 Expense Claim (JSON)"] --> B["parse_and_route\n[LlmAgent]"]
+    A["📥 Expense Claim (JSON)"] --> B["parse_and_route\n[Python node]"]
     B -->|locked / hard rate limit| H["📝 record_outcome\naudit_log.jsonl + content_hash"]
     B -->|passes rate check| D["🔒 security_checkpoint\nPII redaction + injection defense"]
     D -->|injection detected| G["👤 human_approval\nHITL — yes / no"]
-    D -->|clean| E["🔍 fraud_detector\n5 hard-rule checks + rate limit"]
+    D -->|clean| E["🔍 fraud_detector\n5 hard-rule checks + rate-limit soft flag"]
     E -->|fraud flags| G
     E -->|"clean, amount ≥ NT$100"| F["🤖 risk_reviewer\nLLM soft review"]
     E -->|"clean, amount < NT$100"| C["⚡ auto_approve"]
     F --> G
     C --> H
     G --> H
-    H --> I["📊 Monthly PPTX Report\nADK Artifacts download"]
+    H --> I["📊 Monthly PPTX Report\nLLM-assisted summary + ADK Artifacts download"]
 ```
 
 ### ASCII fallback
 
 ```
 Expense Claim (JSON)
-  → parse_and_route       [LlmAgent — field extraction & validation]
+  → parse_and_route       [Python node — input parsing, validation, rate-limit gate]
       ├─ locked / hard rate limit → record_outcome (REJECTED)
       └─ passes rate check
   → security_checkpoint   [PII masking + prompt injection defense]
       ├─ injection detected      → human_approval [HITL] → record_outcome
       └─ clean
-  → fraud_detector        [5 hard-rule checks + rate limit + cross-session ledger]
+  → fraud_detector        [5 hard-rule checks + rate-limit soft flag + cross-session ledger]
       ├─ fraud flags             → human_approval [HITL] → record_outcome
       ├─ clean, amount ≥ NT$100  → risk_reviewer  [LLM soft review] → human_approval [HITL] → record_outcome
       └─ clean, amount < NT$100  → auto_approve → record_outcome
-  → Monthly PPTX Report   [downloadable via ADK Artifacts panel]
+  → Monthly PPTX Report   [LLM-assisted summary + ADK Artifacts download]
 ```
 
 ---
@@ -120,7 +121,7 @@ expense-audit-agent/
 
 | # | Control | Standard |
 |---|---|---|
-| 1 | **Prompt injection defense** — NFKC normalization + config-driven keyword list; fires before any LLM node; CRITICAL escalation | ISO/IEC 27001:2022 A.8.28 |
+| 1 | **Prompt injection defense** — NFKC normalization against full-width/half-width Unicode bypass + config-driven keyword list; fires before any LLM node; CRITICAL escalation; recorded as a security event, not in financial fraud_flags | ISO/IEC 27001:2022 A.8.28 |
 | 2 | **PII redaction** — National ID, credit card, email stripped from LLM context | ISO/IEC 27001:2022 A.8.11 |
 | 3 | **Name masking in reports** — 王三豐 → 王○豐 (first+last preserved for traceback) | ISO/IEC 27001:2022 A.8.11 |
 | 4 | **Content hash** — SHA-256 of `case_id\|amount\|submitter\|description` per record | ISO/IEC 27001:2022 A.5.28 |
@@ -168,13 +169,14 @@ expense-audit-agent/
 ```
 Metric                Score     Cases    Stdev
 ──────────────────────────────────────────────
-RoutingCorrectness    5.00/5    5/6 *    0.00
+RoutingCorrectness    5.00/5    6/6      0.00
 SecurityContainment   5.00/5    6/6      0.00
-FraudDetection        5.00/5    6/6      0.00
-TOTAL                 18/18              0.00
+FraudDetection        5.00/5    5/6 *      0.00
+TOTAL                 18/18 eval checks executed   0.00
 ```
 
-*1 grading API timeout on Case E; all 5 valid responses scored 5/5*
+*1 grading API timeout occurred in FraudDetection; all valid graded results scored 5/5.*
+
 
 ---
 
@@ -278,12 +280,12 @@ The report contains: cover, overview stats, risk flag bar chart, top suspicious 
 
 ---
 
-## ISO Compliance
+## ISO-ALIGNED MAPPING
 
 | Control | STRIDE | Implementation |
 |---|---|---|
 | ISO/IEC 27001:2022 A.8.11 | I | PII masking at `security_checkpoint`; name masking in all reports; record_outcome returns Case ID only (output information control) |
-| ISO/IEC 27001:2022 A.8.28 | S, T | Prompt injection defense — CRITICAL escalation before any LLM node; NFKC normalization against Unicode lookalike bypass |
+| ISO/IEC 27001:2022 A.8.28 | S, T, E | Prompt injection defense — `security_checkpoint` fires before any LLM node; NFKC normalization against full-width/half-width Unicode bypass + config-driven keyword list; injection patterns escalate to CRITICAL risk and are never auto-approved. Recorded as a CRITICAL security event, not in the financial fraud_flags list. |
 | ISO/IEC 27001:2022 A.5.3 | E | HITL segregation — human auditor retains final approval authority on every flagged case |
 | ISO/IEC 27001:2022 A.5.28 | R | `content_hash (SHA-256) ` per audit record — non-repudiation prototype |
 | ISO/IEC 27001:2022 A.8.15 | R, T | Append-only audit_log.jsonl; Case IDs for authorized traceback |
